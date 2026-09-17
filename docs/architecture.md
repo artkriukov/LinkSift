@@ -7,7 +7,9 @@
 ```text
 Telegram → aiogram bot → application use case
                             ↓
-                         SQLite
+                 MaterialRepository
+                            ↓
+               SQLAlchemy → Supabase PostgreSQL
                             ↓
                      media pipeline
                     ↙              ↘
@@ -19,9 +21,11 @@ Telegram → aiogram bot → application use case
 ## Слои и границы
 
 - `domain/`: контракты результата, evidence и контекста без SDK и ввода-вывода;
-- `application/`: интерфейсы провайдеров и будущие сценарии обработки/удаления;
+- `application/`: интерфейсы провайдеров и `MaterialRepository` без зависимостей
+  от SQLAlchemy, Psycopg, Supabase SDK, Telegram или FastAPI;
 - `entrypoints/`: тонкие точки входа bot и API;
-- будущий `infrastructure/`: SQLite, downloader, ffmpeg и AI SDK.
+- `infrastructure/database/`: асинхронный SQLAlchemy/Psycopg adapter для PostgreSQL;
+- будущие infrastructure adapters: downloader, ffmpeg и AI SDK.
 
 Зависимости направлены к `domain` и `application`. Telegram handlers не должны
 содержать анализ медиа. Провайдеры реализуют Protocol и выбираются конфигурацией.
@@ -30,7 +34,7 @@ Telegram → aiogram bot → application use case
 
 На первом этапе запрос обрабатывается в процессе бота через внутреннюю ограниченную
 `asyncio.Queue`. Один consumer последовательно выполняет тяжёлые задачи, а bot loop
-продолжает принимать сообщения. Состояние и результат сохраняются в SQLite до и
+продолжает принимать сообщения. Состояние и результат сохраняются в PostgreSQL до и
 после обработки. После аварийного перезапуска незавершённые записи переводятся в
 повторяемое состояние по явной политике.
 
@@ -41,10 +45,16 @@ VPS или требований к надёжной фоновой достав�
 
 ## Хранение
 
-SQLite работает в WAL-режиме с `busy_timeout` и короткими транзакциями. Будущие
-таблицы: materials, jobs, results, transcripts и user_settings. Дедупликация строится
-по владельцу, нормализованному входу или хешу и версии pipeline. Повторный анализ
-создаёт новую попытку, а не перезаписывает историю незаметно.
+Supabase PostgreSQL — единственный постоянный источник данных. Таблицы `materials`,
+`processing_attempts` и `analysis_results` создаются Alembic-миграцией. ORM-модели
+отделены от Pydantic-моделей предметной области. Каждая repository-операция создаёт
+собственную async session и транзакцию; глобальной session нет.
+
+Все запросы к материалу включают `owner_telegram_id`. Активные материалы уникальны
+по владельцу и нормализованному `source_key`; после soft delete тот же источник
+можно добавить снова. Повторный анализ создаёт отдельную попытку. Результат проходит
+Pydantic-валидацию перед записью в JSONB. RLS включён без публичных policies, поэтому
+таблицы недоступны через Supabase Data API и используются только backend-подключением.
 
 ## Pipeline
 
@@ -75,7 +85,7 @@ endpoints; streaming-лимиты, timeouts, `ffprobe`, subprocess без shell 
 ## Порядок реализации
 
 1. Spike Gemini и локального fallback на 20–30 реальных материалах.
-2. SQLite schema, migrations, repository, статусы и idempotency.
+2. PostgreSQL schema, migrations, repository, статусы и idempotency. **Готово.**
 3. Приём Telegram-файла, лимиты, `asyncio.Queue`, orchestration и TTL cleanup.
 4. Один рабочий AI pipeline, evidence validator, formatter и отправка ответа.
 5. Безопасные URL adapters и ручной upload fallback.
