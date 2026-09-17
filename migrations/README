@@ -1,0 +1,4 @@
+Alembic migrations for the LinkSift PostgreSQL schema.
+
+The database URL is read from LINKSIFT_DATABASE_URL. It is intentionally absent
+from alembic.ini so credentials cannot be committed or printed by configuration.

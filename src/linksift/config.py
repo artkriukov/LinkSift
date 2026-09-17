@@ -10,6 +10,8 @@ class Settings(BaseSettings):
 
     environment: Literal["local", "preprod", "production"] = "local"
     bot_token: SecretStr = SecretStr("")
+    database_url: SecretStr = SecretStr("")
+    test_database_url: SecretStr = SecretStr("")
     allowed_user_ids: list[int] = Field(default_factory=list)
     data_dir: Path = Path("data")
     max_duration_seconds: int = Field(default=1800, gt=0)

@@ -1,6 +1,11 @@
-from typing import Literal
+from typing import Any, Literal
+from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
+
+SourceType = Literal["youtube", "instagram_reel", "article", "direct_media", "upload", "text"]
+MaterialStatus = Literal["pending", "processing", "completed", "failed", "deleted"]
+AttemptStatus = Literal["pending", "processing", "completed", "failed"]
 
 
 class Contract(BaseModel):
@@ -43,7 +48,7 @@ class Entity(Contract):
 
 
 class Source(Contract):
-    type: Literal["youtube", "instagram_reel", "article", "direct_media", "upload", "text"]
+    type: SourceType
     url: str | None = None
     title: str | None = None
     creator: str | None = None
@@ -80,3 +85,38 @@ class AnalysisContext(Contract):
     description: str | None = None
     transcript: Transcript | None = None
     observations: list[Evidence] = Field(default_factory=list)
+
+
+class Material(Contract):
+    id: UUID
+    owner_telegram_id: int
+    source_type: SourceType
+    source_url: str | None = None
+    source_key: str
+    title: str | None = None
+    status: MaterialStatus
+    created_at: AwareDatetime
+    updated_at: AwareDatetime
+    deleted_at: AwareDatetime | None = None
+
+
+class ProcessingAttempt(Contract):
+    id: UUID
+    material_id: UUID
+    attempt_number: int = Field(gt=0)
+    status: AttemptStatus
+    pipeline_version: str
+    error_code: str | None = None
+    error_message: str | None = None
+    started_at: AwareDatetime | None = None
+    finished_at: AwareDatetime | None = None
+    created_at: AwareDatetime
+
+
+class StoredAnalysisResult(Contract):
+    id: UUID
+    attempt_id: UUID
+    result: AnalysisResult
+    transcript: Transcript | None = None
+    provider_usage: dict[str, Any]
+    created_at: AwareDatetime
