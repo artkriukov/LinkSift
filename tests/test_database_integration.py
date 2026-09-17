@@ -82,6 +82,17 @@ def test_postgresql_repository_end_to_end(migrated_database: str):
             )
             assert third.status == "pending"
 
+            ingested, first_attempt = await repository.create_material_with_attempt(
+                owner_telegram_id=100,
+                source_type="text",
+                source_key="atomic-material",
+                source_text="stored text",
+                pipeline_version="telegram-ingestion-v1",
+            )
+            assert ingested.source_text == "stored text"
+            assert first_attempt.material_id == ingested.id
+            assert first_attempt.attempt_number == 1
+
             attempt = await repository.create_attempt(
                 material_id=first.id,
                 owner_telegram_id=100,

@@ -48,6 +48,7 @@ class SqlAlchemyMaterialRepository:
         source_type: SourceType,
         source_key: str,
         source_url: str | None = None,
+        source_text: str | None = None,
         title: str | None = None,
     ) -> Material:
         try:
@@ -56,6 +57,7 @@ class SqlAlchemyMaterialRepository:
                     owner_telegram_id=owner_telegram_id,
                     source_type=source_type,
                     source_url=source_url,
+                    source_text=source_text,
                     source_key=source_key,
                     title=title,
                     status="pending",
@@ -69,6 +71,46 @@ class SqlAlchemyMaterialRepository:
             ) from None
         except SQLAlchemyError:
             raise DatabaseOperationError("Could not create material") from None
+
+    async def create_material_with_attempt(
+        self,
+        *,
+        owner_telegram_id: int,
+        source_type: SourceType,
+        source_key: str,
+        pipeline_version: str,
+        source_url: str | None = None,
+        source_text: str | None = None,
+        title: str | None = None,
+    ) -> tuple[Material, ProcessingAttempt]:
+        try:
+            async with self._session_factory() as session, session.begin():
+                material = MaterialRow(
+                    owner_telegram_id=owner_telegram_id,
+                    source_type=source_type,
+                    source_url=source_url,
+                    source_text=source_text,
+                    source_key=source_key,
+                    title=title,
+                    status="pending",
+                )
+                session.add(material)
+                await session.flush()
+                attempt = ProcessingAttemptRow(
+                    material_id=material.id,
+                    attempt_number=1,
+                    status="pending",
+                    pipeline_version=pipeline_version,
+                )
+                session.add(attempt)
+                await session.flush()
+                return to_material(material), to_attempt(attempt)
+        except IntegrityError:
+            raise DuplicateMaterialError(
+                "An active material with this source already exists"
+            ) from None
+        except SQLAlchemyError:
+            raise DatabaseOperationError("Could not create material and attempt") from None
 
     async def get_existing_material(
         self, *, owner_telegram_id: int, source_key: str

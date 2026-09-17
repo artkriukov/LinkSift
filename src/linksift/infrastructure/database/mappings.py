@@ -19,6 +19,7 @@ def to_material(row: MaterialRow) -> Material:
             "owner_telegram_id": row.owner_telegram_id,
             "source_type": row.source_type,
             "source_url": row.source_url,
+            "source_text": row.source_text,
             "source_key": row.source_key,
             "title": row.title,
             "status": row.status,

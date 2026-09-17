@@ -44,8 +44,21 @@ class MaterialRepository(Protocol):
         source_type: SourceType,
         source_key: str,
         source_url: str | None = None,
+        source_text: str | None = None,
         title: str | None = None,
     ) -> Material: ...
+
+    async def create_material_with_attempt(
+        self,
+        *,
+        owner_telegram_id: int,
+        source_type: SourceType,
+        source_key: str,
+        pipeline_version: str,
+        source_url: str | None = None,
+        source_text: str | None = None,
+        title: str | None = None,
+    ) -> tuple[Material, ProcessingAttempt]: ...
 
     async def get_existing_material(
         self, *, owner_telegram_id: int, source_key: str

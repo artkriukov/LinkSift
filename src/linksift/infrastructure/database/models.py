@@ -70,6 +70,7 @@ class MaterialRow(Base):
     owner_telegram_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     source_type: Mapped[str] = mapped_column(Text, nullable=False)
     source_url: Mapped[str | None] = mapped_column(Text)
+    source_text: Mapped[str | None] = mapped_column(Text)
     source_key: Mapped[str] = mapped_column(Text, nullable=False)
     title: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(

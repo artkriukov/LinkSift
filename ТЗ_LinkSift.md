@@ -507,7 +507,7 @@ Gemini Files API принимает большие видеофайлы, а ко
 ## 13. Безопасность и приватность
 
 - токены и API-ключи хранятся только в secret variables;
-- доступ к боту ограничивается allowlist Telegram ID;
+- бот публичный, принимает только личные сообщения и изолирует данные по Telegram ID;
 - URL проверяются для защиты от SSRF;
 - запрещаются обращения к localhost, внутренним подсетям и metadata endpoints;
 - устанавливаются лимиты размера, длительности и времени скачивания;
@@ -725,7 +725,7 @@ asr_fallback: yandex-speechkit-deferred
 ocr: paddleocr
 llm_fallback: alice-ai-flash-or-local-qwen3-8b
 media_ttl: 1h
-access: telegram-user-id-allowlist
+access: public-private-chat-with-per-user-isolation
 ```
 
 Эта конфигурация оптимизирована для скорости: один мультимодальный вызов заменяет отдельные ASR, OCR и текстовый анализ. Она применяется только при официально доступном Gemini API. Резервный локальный pipeline снижает риск полной остановки бота при проблемах с Google.

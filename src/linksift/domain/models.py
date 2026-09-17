@@ -92,6 +92,7 @@ class Material(Contract):
     owner_telegram_id: int
     source_type: SourceType
     source_url: str | None = None
+    source_text: str | None = None
     source_key: str
     title: str | None = None
     status: MaterialStatus
