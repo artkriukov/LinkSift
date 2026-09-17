@@ -1,4 +1,4 @@
-.PHONY: setup check test db-upgrade db-downgrade api bot
+.PHONY: setup check test db-upgrade db-downgrade api bot worker
 
 VENV := .venv/bin
 
@@ -17,3 +17,5 @@ api:
 	$(VENV)/uvicorn linksift.entrypoints.api:app --reload
 bot:
 	$(VENV)/python -m linksift.entrypoints.bot
+worker:
+	$(VENV)/python -m linksift.entrypoints.worker

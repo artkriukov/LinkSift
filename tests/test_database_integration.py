@@ -93,6 +93,29 @@ def test_postgresql_repository_end_to_end(migrated_database: str):
             assert first_attempt.material_id == ingested.id
             assert first_attempt.attempt_number == 1
 
+            claimed = await repository.claim_next_pending(
+                worker_id="integration-a", lease_seconds=30
+            )
+            assert claimed is not None
+            assert claimed.attempt.id == first_attempt.id
+            assert claimed.attempt.claim_count == 1
+            assert claimed.material.status == "processing"
+            assert (
+                await repository.claim_next_pending(worker_id="integration-b", lease_seconds=30)
+                is None
+            )
+            assert await repository.heartbeat(
+                attempt_id=claimed.attempt.id,
+                worker_id="integration-a",
+                lease_seconds=30,
+            )
+            await repository.complete_claim(
+                material_id=claimed.material.id,
+                attempt_id=claimed.attempt.id,
+                worker_id="integration-a",
+                result=analysis_result(),
+            )
+
             attempt = await repository.create_attempt(
                 material_id=first.id,
                 owner_telegram_id=100,

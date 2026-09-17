@@ -111,7 +111,16 @@ class ProcessingAttempt(Contract):
     error_message: str | None = None
     started_at: AwareDatetime | None = None
     finished_at: AwareDatetime | None = None
+    worker_id: str | None = None
+    lease_expires_at: AwareDatetime | None = None
+    heartbeat_at: AwareDatetime | None = None
+    claim_count: int = Field(default=0, ge=0)
     created_at: AwareDatetime
+
+
+class ClaimedProcessingAttempt(Contract):
+    material: Material
+    attempt: ProcessingAttempt
 
 
 class StoredAnalysisResult(Contract):

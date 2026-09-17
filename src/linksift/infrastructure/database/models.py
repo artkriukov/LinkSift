@@ -89,6 +89,7 @@ class ProcessingAttemptRow(Base):
     __tablename__ = "processing_attempts"
     __table_args__ = (
         CheckConstraint("attempt_number > 0", name="ck_processing_attempts_number"),
+        CheckConstraint("claim_count >= 0", name="ck_processing_attempts_claim_count"),
         CheckConstraint(
             "status IN ('pending', 'processing', 'completed', 'failed')",
             name="ck_processing_attempts_status",
@@ -117,6 +118,10 @@ class ProcessingAttemptRow(Base):
     error_message: Mapped[str | None] = mapped_column(Text)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    worker_id: Mapped[str | None] = mapped_column(Text)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    claim_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
