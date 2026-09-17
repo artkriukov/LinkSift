@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,3 +20,14 @@ class Settings(BaseSettings):
     analysis_pipeline: Literal["gemini", "local"] = "gemini"
     gemini_api_key: SecretStr = SecretStr("")
     gemini_model: str = ""
+    worker_poll_interval_seconds: float = Field(default=2, gt=0)
+    worker_lease_seconds: int = Field(default=300, gt=0)
+    worker_heartbeat_seconds: int = Field(default=30, gt=0)
+    processing_timeout_seconds: int = Field(default=240, gt=0)
+    worker_max_claims: int = Field(default=3, gt=0)
+
+    @model_validator(mode="after")
+    def validate_worker_timing(self) -> "Settings":
+        if self.worker_lease_seconds <= self.worker_heartbeat_seconds:
+            raise ValueError("worker lease must be longer than heartbeat interval")
+        return self

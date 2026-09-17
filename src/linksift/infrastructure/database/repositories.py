@@ -1,10 +1,10 @@
 import re
 from collections.abc import Mapping
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -13,10 +13,12 @@ from linksift.application.repositories import (
     DatabaseOperationError,
     DuplicateMaterialError,
     InvalidStateTransitionError,
+    LeaseLostError,
     MaterialNotFoundError,
 )
 from linksift.domain.models import (
     AnalysisResult,
+    ClaimedProcessingAttempt,
     Material,
     ProcessingAttempt,
     SourceType,
@@ -40,6 +42,187 @@ def _safe_error_message(message: str) -> str:
 class SqlAlchemyMaterialRepository:
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self._session_factory = session_factory
+
+    async def claim_next_pending(
+        self, *, worker_id: str, lease_seconds: int
+    ) -> ClaimedProcessingAttempt | None:
+        if not worker_id or lease_seconds <= 0:
+            raise ValueError("worker_id and a positive lease are required")
+        try:
+            async with self._session_factory() as session, session.begin():
+                now = datetime.now(UTC)
+                query = (
+                    select(ProcessingAttemptRow)
+                    .join(MaterialRow, MaterialRow.id == ProcessingAttemptRow.material_id)
+                    .where(
+                        MaterialRow.deleted_at.is_(None),
+                        MaterialRow.status.in_(("pending", "processing")),
+                        or_(
+                            ProcessingAttemptRow.status == "pending",
+                            and_(
+                                ProcessingAttemptRow.status == "processing",
+                                ProcessingAttemptRow.lease_expires_at < now,
+                            ),
+                        ),
+                    )
+                    .order_by(ProcessingAttemptRow.created_at.asc())
+                    .with_for_update(skip_locked=True)
+                    .limit(1)
+                )
+                attempt = await session.scalar(query)
+                if attempt is None:
+                    return None
+                material = await session.get(MaterialRow, attempt.material_id, with_for_update=True)
+                if material is None or material.deleted_at is not None:
+                    return None
+                expires = now + timedelta(seconds=lease_seconds)
+                attempt.status = "processing"
+                attempt.worker_id = worker_id
+                attempt.heartbeat_at = now
+                attempt.lease_expires_at = expires
+                attempt.claim_count += 1
+                attempt.started_at = attempt.started_at or now
+                attempt.finished_at = None
+                attempt.error_code = None
+                attempt.error_message = None
+                material.status = "processing"
+                material.updated_at = now
+                await session.flush()
+                return ClaimedProcessingAttempt(
+                    material=to_material(material), attempt=to_attempt(attempt)
+                )
+        except SQLAlchemyError:
+            raise DatabaseOperationError("Could not claim processing attempt") from None
+
+    async def heartbeat(self, *, attempt_id: UUID, worker_id: str, lease_seconds: int) -> bool:
+        try:
+            async with self._session_factory() as session, session.begin():
+                now = datetime.now(UTC)
+                result = await session.execute(
+                    update(ProcessingAttemptRow)
+                    .where(
+                        ProcessingAttemptRow.id == attempt_id,
+                        ProcessingAttemptRow.status == "processing",
+                        ProcessingAttemptRow.worker_id == worker_id,
+                        ProcessingAttemptRow.lease_expires_at > now,
+                    )
+                    .values(
+                        heartbeat_at=now,
+                        lease_expires_at=now + timedelta(seconds=lease_seconds),
+                    )
+                )
+                return result.rowcount == 1
+        except SQLAlchemyError:
+            raise DatabaseOperationError("Could not renew processing lease") from None
+
+    async def complete_claim(
+        self,
+        *,
+        material_id: UUID,
+        attempt_id: UUID,
+        worker_id: str,
+        result: AnalysisResult,
+    ) -> StoredAnalysisResult:
+        validated = AnalysisResult.model_validate(result)
+        try:
+            async with self._session_factory() as session, session.begin():
+                material, attempt = await self._locked_claim(
+                    session,
+                    material_id=material_id,
+                    attempt_id=attempt_id,
+                    worker_id=worker_id,
+                )
+                stored = AnalysisResultRow(
+                    attempt_id=attempt.id,
+                    result=validated.model_dump(mode="json"),
+                    transcript=None,
+                    provider_usage={},
+                )
+                session.add(stored)
+                now = datetime.now(UTC)
+                material.status = "completed"
+                material.updated_at = now
+                attempt.status = "completed"
+                attempt.finished_at = now
+                self._clear_lease(attempt)
+                await session.flush()
+                return to_stored_result(stored)
+        except IntegrityError:
+            raise LeaseLostError("Processing lease no longer owns this attempt") from None
+        except SQLAlchemyError:
+            raise DatabaseOperationError("Could not complete processing attempt") from None
+
+    async def fail_claim(
+        self,
+        *,
+        material_id: UUID,
+        attempt_id: UUID,
+        worker_id: str,
+        error_code: str,
+        error_message: str,
+        retry: bool,
+    ) -> ProcessingAttempt:
+        try:
+            async with self._session_factory() as session, session.begin():
+                material, attempt = await self._locked_claim(
+                    session,
+                    material_id=material_id,
+                    attempt_id=attempt_id,
+                    worker_id=worker_id,
+                )
+                now = datetime.now(UTC)
+                attempt.error_code = error_code[:200]
+                attempt.error_message = _safe_error_message(error_message)
+                if retry:
+                    material.status = "pending"
+                    attempt.status = "pending"
+                    attempt.started_at = None
+                else:
+                    material.status = "failed"
+                    attempt.status = "failed"
+                    attempt.finished_at = now
+                material.updated_at = now
+                self._clear_lease(attempt)
+                await session.flush()
+                return to_attempt(attempt)
+        except SQLAlchemyError:
+            raise DatabaseOperationError("Could not fail processing attempt") from None
+
+    @staticmethod
+    async def _locked_claim(
+        session: AsyncSession,
+        *,
+        material_id: UUID,
+        attempt_id: UUID,
+        worker_id: str,
+    ) -> tuple[MaterialRow, ProcessingAttemptRow]:
+        now = datetime.now(UTC)
+        attempt = await session.scalar(
+            select(ProcessingAttemptRow)
+            .where(
+                ProcessingAttemptRow.id == attempt_id,
+                ProcessingAttemptRow.material_id == material_id,
+            )
+            .with_for_update()
+        )
+        if (
+            attempt is None
+            or attempt.status != "processing"
+            or attempt.worker_id != worker_id
+            or attempt.lease_expires_at is None
+            or attempt.lease_expires_at <= now
+        ):
+            raise LeaseLostError("Processing lease no longer owns this attempt")
+        material = await session.get(MaterialRow, material_id, with_for_update=True)
+        if material is None or material.deleted_at is not None or material.status != "processing":
+            raise LeaseLostError("Processing lease no longer owns this material")
+        return material, attempt
+
+    @staticmethod
+    def _clear_lease(attempt: ProcessingAttemptRow) -> None:
+        attempt.worker_id = None
+        attempt.lease_expires_at = None
+        attempt.heartbeat_at = None
 
     async def create_material(
         self,

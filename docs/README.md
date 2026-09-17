@@ -4,6 +4,7 @@
 - [Подключение Supabase PostgreSQL](supabase.md)
 - [Архитектура и этапы реализации](architecture.md)
 - [Telegram-бот: поведение, поток данных и развитие](telegram-bot.md)
+- [Фоновый worker обработки материалов](processing-worker.md)
 - [Gitflow / Git workflow: ветки, коммиты, PR и релизы](git-workflow.md)
 - [Исходное ТЗ](../ТЗ_LinkSift.md)
 

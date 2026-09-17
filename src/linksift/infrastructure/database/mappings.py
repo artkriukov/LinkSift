@@ -42,6 +42,10 @@ def to_attempt(row: ProcessingAttemptRow) -> ProcessingAttempt:
             "error_message": row.error_message,
             "started_at": row.started_at,
             "finished_at": row.finished_at,
+            "worker_id": row.worker_id,
+            "lease_expires_at": row.lease_expires_at,
+            "heartbeat_at": row.heartbeat_at,
+            "claim_count": row.claim_count,
             "created_at": row.created_at,
         }
     )

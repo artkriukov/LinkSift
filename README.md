@@ -9,6 +9,7 @@
 - [Подключение Supabase PostgreSQL](docs/supabase.md)
 - [Архитектура](docs/architecture.md)
 - [Как работает Telegram-бот](docs/telegram-bot.md)
+- [Фоновый worker обработки материалов](docs/processing-worker.md)
 - [Gitflow / Git workflow](docs/git-workflow.md)
 
 Исходное [ТЗ](ТЗ_LinkSift.md).

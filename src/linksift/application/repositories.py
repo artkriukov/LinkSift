@@ -4,6 +4,7 @@ from uuid import UUID
 
 from linksift.domain.models import (
     AnalysisResult,
+    ClaimedProcessingAttempt,
     Material,
     ProcessingAttempt,
     SourceType,
@@ -32,11 +33,40 @@ class InvalidStateTransitionError(RepositoryError):
     pass
 
 
+class LeaseLostError(InvalidStateTransitionError):
+    pass
+
+
 class DatabaseOperationError(RepositoryError):
     pass
 
 
 class MaterialRepository(Protocol):
+    async def claim_next_pending(
+        self, *, worker_id: str, lease_seconds: int
+    ) -> ClaimedProcessingAttempt | None: ...
+
+    async def heartbeat(self, *, attempt_id: UUID, worker_id: str, lease_seconds: int) -> bool: ...
+
+    async def complete_claim(
+        self,
+        *,
+        material_id: UUID,
+        attempt_id: UUID,
+        worker_id: str,
+        result: AnalysisResult,
+    ) -> StoredAnalysisResult: ...
+
+    async def fail_claim(
+        self,
+        *,
+        material_id: UUID,
+        attempt_id: UUID,
+        worker_id: str,
+        error_code: str,
+        error_message: str,
+        retry: bool,
+    ) -> ProcessingAttempt: ...
     async def create_material(
         self,
         *,
