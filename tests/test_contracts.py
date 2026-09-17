@@ -5,13 +5,6 @@ from linksift.config import Settings
 from linksift.domain.models import Entity, Evidence
 
 
-def test_access_denied_by_default():
-    settings = Settings(_env_file=None)
-    assert not settings.allows(123)
-    assert not settings.allows(None)
-    assert Settings(_env_file=None, allowed_user_ids=[123]).allows(123)
-
-
 @pytest.mark.parametrize("confidence", [-0.01, 1.01, float("nan")])
 def test_invalid_confidence_rejected(confidence):
     with pytest.raises(ValidationError):

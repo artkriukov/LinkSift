@@ -31,6 +31,7 @@ class FakeMaterialRepository:
         source_type: SourceType,
         source_key: str,
         source_url: str | None = None,
+        source_text: str | None = None,
         title: str | None = None,
     ) -> Material:
         if await self.get_existing_material(
@@ -43,6 +44,7 @@ class FakeMaterialRepository:
             owner_telegram_id=owner_telegram_id,
             source_type=source_type,
             source_url=source_url,
+            source_text=source_text,
             source_key=source_key,
             title=title,
             status="pending",
@@ -51,6 +53,36 @@ class FakeMaterialRepository:
         )
         self.materials[material.id] = material
         return material
+
+    async def create_material_with_attempt(
+        self,
+        *,
+        owner_telegram_id: int,
+        source_type: SourceType,
+        source_key: str,
+        pipeline_version: str,
+        source_url: str | None = None,
+        source_text: str | None = None,
+        title: str | None = None,
+    ) -> tuple[Material, ProcessingAttempt]:
+        material = await self.create_material(
+            owner_telegram_id=owner_telegram_id,
+            source_type=source_type,
+            source_key=source_key,
+            source_url=source_url,
+            source_text=source_text,
+            title=title,
+        )
+        try:
+            attempt = await self.create_attempt(
+                material_id=material.id,
+                owner_telegram_id=owner_telegram_id,
+                pipeline_version=pipeline_version,
+            )
+        except Exception:
+            self.materials.pop(material.id, None)
+            raise
+        return material, attempt
 
     async def get_existing_material(
         self, *, owner_telegram_id: int, source_key: str
